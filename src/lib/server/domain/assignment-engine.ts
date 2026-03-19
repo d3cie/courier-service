@@ -12,7 +12,8 @@ import {
 } from '$lib/server/db/schema';
 import { buildVehicleCapacity, fitsVehicle } from '$lib/server/domain/capacity';
 import { haversineDistanceMeters } from '$lib/server/domain/geo';
-import { queueTextMessage } from '$lib/server/services/outbox';
+import type { OutboundMessenger } from '$lib/server/services/outbound-messenger';
+import { OutboxOutboundMessenger } from '$lib/server/services/outbound-messenger';
 
 function nowIso() {
 	return new Date().toISOString();
@@ -35,6 +36,8 @@ async function getDispatchContext(orderId: string) {
 }
 
 export class AssignmentEngine {
+	constructor(private outbound: OutboundMessenger = new OutboxOutboundMessenger()) {}
+
 	async rankCandidates(orderId: string) {
 		const { order, pickup } = await getDispatchContext(orderId);
 
@@ -192,7 +195,7 @@ export class AssignmentEngine {
 			})
 			.where(eq(orders.id, orderId));
 
-		await queueTextMessage({
+		await this.outbound.queueText({
 			toJid: order.customerJid,
 			orderId,
 			body: `We could not auto-assign a driver yet. Dispatch has been notified and will review order ${orderId.slice(0, 8)} manually.`,
@@ -267,7 +270,7 @@ export class AssignmentEngine {
 			.where(eq(orders.id, orderId));
 
 		if (candidate.driverWhatsappJid) {
-			await queueTextMessage({
+			await this.outbound.queueText({
 				toJid: candidate.driverWhatsappJid,
 				orderId,
 				body: `New courier offer: order ${orderId.slice(0, 8)} is available for ${candidate.driverName} using ${candidate.vehicleName}. Please open the driver portal to accept or decline before ${new Date(expiresAt).toLocaleTimeString()}.`,
@@ -364,7 +367,7 @@ export class AssignmentEngine {
 			})
 			.where(eq(driverAvailability.driverId, driverId));
 
-		await queueTextMessage({
+		await this.outbound.queueText({
 			toJid: order.customerJid,
 			orderId: order.id,
 			body: `Driver ${driver.displayName} accepted your courier request and is preparing with ${vehicle.name}.`,
@@ -522,7 +525,7 @@ export class AssignmentEngine {
 			delivered: 'Your package has been marked as delivered.'
 		} as const;
 
-		await queueTextMessage({
+		await this.outbound.queueText({
 			toJid: order.customerJid,
 			orderId,
 			body: customerMessages[nextStatus],

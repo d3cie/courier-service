@@ -3,7 +3,9 @@ import { desc, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db/client';
 import { integrationConnections, messageEvents, outboxMessages } from '$lib/server/db/schema';
 
-export const load = async () => {
+export const load = async ({ depends }) => {
+	depends('app:whatsapp-dashboard');
+
 	const [connection] = await db
 		.select()
 		.from(integrationConnections)

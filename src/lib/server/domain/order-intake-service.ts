@@ -17,7 +17,9 @@ import {
 	parseWeightInput
 } from '$lib/server/domain/capacity';
 import type { NormalizedInboundMessage } from '$lib/server/messaging/types';
-import { queueTextMessage, logInboundMessage } from '$lib/server/services/outbox';
+import type { OutboundMessenger } from '$lib/server/services/outbound-messenger';
+import { OutboxOutboundMessenger } from '$lib/server/services/outbound-messenger';
+import { logInboundMessage } from '$lib/server/services/outbox';
 
 import { AssignmentEngine } from './assignment-engine';
 
@@ -64,7 +66,10 @@ async function createDraftOrder(customerJid: string, customerPhone: string) {
 }
 
 export class OrderIntakeService {
-	constructor(private assignmentEngine = new AssignmentEngine()) {}
+	constructor(
+		private assignmentEngine: AssignmentEngine = new AssignmentEngine(),
+		private outbound: OutboundMessenger = new OutboxOutboundMessenger()
+	) {}
 
 	private buildIntroMessage() {
 		const choices = packagePresetSeeds
@@ -102,7 +107,7 @@ export class OrderIntakeService {
 			})
 			.returning();
 
-		await queueTextMessage({
+		await this.outbound.queueText({
 			toJid: message.fromJid,
 			conversationSessionId: session.id,
 			orderId,
@@ -174,7 +179,7 @@ export class OrderIntakeService {
 			return;
 		}
 
-		await queueTextMessage({
+		await this.outbound.queueText({
 			toJid: order.customerJid,
 			conversationSessionId: sessionId,
 			orderId,
@@ -235,7 +240,7 @@ export class OrderIntakeService {
 		switch (session.state) {
 			case 'awaiting_size': {
 				if (!isText(message)) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -248,7 +253,7 @@ export class OrderIntakeService {
 				const choice = parseSizeChoice(text);
 
 				if (!choice) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -276,7 +281,7 @@ export class OrderIntakeService {
 					.where(eq(orders.id, order.id));
 
 				await this.updateSession(session.id, 'awaiting_dimensions', order.id);
-				await queueTextMessage({
+				await this.outbound.queueText({
 					toJid: message.fromJid,
 					conversationSessionId: session.id,
 					orderId: order.id,
@@ -287,7 +292,7 @@ export class OrderIntakeService {
 
 			case 'awaiting_dimensions': {
 				if (!isText(message)) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -300,7 +305,7 @@ export class OrderIntakeService {
 				const dimensions = parseDimensionsInput(text);
 
 				if (!dimensions) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -325,7 +330,7 @@ export class OrderIntakeService {
 					.where(eq(orders.id, order.id));
 
 				await this.updateSession(session.id, 'awaiting_weight', order.id);
-				await queueTextMessage({
+				await this.outbound.queueText({
 					toJid: message.fromJid,
 					conversationSessionId: session.id,
 					orderId: order.id,
@@ -336,7 +341,7 @@ export class OrderIntakeService {
 
 			case 'awaiting_weight': {
 				if (!isText(message)) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -354,7 +359,7 @@ export class OrderIntakeService {
 					!order.packageWidthCm ||
 					!order.packageHeightCm
 				) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -371,7 +376,7 @@ export class OrderIntakeService {
 
 				if (!preset) {
 					await this.updateSession(session.id, 'awaiting_size', order.id);
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -392,7 +397,7 @@ export class OrderIntakeService {
 					)
 				) {
 					await this.updateSession(session.id, 'awaiting_size', order.id);
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -410,7 +415,7 @@ export class OrderIntakeService {
 					.where(eq(orders.id, order.id));
 
 				await this.updateSession(session.id, 'awaiting_pickup_location', order.id);
-				await queueTextMessage({
+				await this.outbound.queueText({
 					toJid: message.fromJid,
 					conversationSessionId: session.id,
 					orderId: order.id,
@@ -421,7 +426,7 @@ export class OrderIntakeService {
 
 			case 'awaiting_pickup_location': {
 				if (message.type !== 'location') {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -432,7 +437,7 @@ export class OrderIntakeService {
 
 				await this.upsertLocation(order.id, 'pickup', message);
 				await this.updateSession(session.id, 'awaiting_dropoff_location', order.id);
-				await queueTextMessage({
+				await this.outbound.queueText({
 					toJid: message.fromJid,
 					conversationSessionId: session.id,
 					orderId: order.id,
@@ -443,7 +448,7 @@ export class OrderIntakeService {
 
 			case 'awaiting_dropoff_location': {
 				if (message.type !== 'location') {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -454,7 +459,7 @@ export class OrderIntakeService {
 
 				await this.upsertLocation(order.id, 'dropoff', message);
 				await this.updateSession(session.id, 'awaiting_notes', order.id);
-				await queueTextMessage({
+				await this.outbound.queueText({
 					toJid: message.fromJid,
 					conversationSessionId: session.id,
 					orderId: order.id,
@@ -465,7 +470,7 @@ export class OrderIntakeService {
 
 			case 'awaiting_notes': {
 				if (!isText(message)) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -492,7 +497,7 @@ export class OrderIntakeService {
 
 			case 'awaiting_confirmation': {
 				if (!isText(message)) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -510,7 +515,7 @@ export class OrderIntakeService {
 						.set({ status: 'cancelled', updatedAt: nowIso() })
 						.where(eq(orders.id, order.id));
 					await this.updateSession(session.id, 'cancelled', order.id);
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -520,7 +525,7 @@ export class OrderIntakeService {
 				}
 
 				if (!['1', 'yes', 'confirm'].includes(normalized)) {
-					await queueTextMessage({
+					await this.outbound.queueText({
 						toJid: message.fromJid,
 						conversationSessionId: session.id,
 						orderId: order.id,
@@ -543,7 +548,7 @@ export class OrderIntakeService {
 				await this.assignmentEngine.rankCandidates(order.id);
 				const offer = await this.assignmentEngine.offerNextCandidate(order.id);
 
-				await queueTextMessage({
+				await this.outbound.queueText({
 					toJid: message.fromJid,
 					conversationSessionId: session.id,
 					orderId: order.id,
@@ -555,7 +560,7 @@ export class OrderIntakeService {
 			}
 
 			default: {
-				await queueTextMessage({
+				await this.outbound.queueText({
 					toJid: message.fromJid,
 					conversationSessionId: session.id,
 					orderId: order.id,

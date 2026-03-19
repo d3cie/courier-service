@@ -66,6 +66,7 @@ Change these before any real deployment.
 - The app stores SQLite data and WhatsApp auth state in `./data` by default.
 - The worker is not serverless-safe. It needs a long-lived Node process with persistent disk.
 - The first real WhatsApp connection requires opening `/admin/integrations/whatsapp` and scanning the QR code once the worker is running.
+- Authenticated admins can test the customer message flow without WhatsApp by POSTing JSON to `/admin/integrations/whatsapp/test-webhook` with `phoneNumber`, `messageBody`, and optional `location`.
 - Driver WhatsApp acceptance is not implemented in v1. Drivers accept and progress jobs in the web portal.
 
 ## Useful commands

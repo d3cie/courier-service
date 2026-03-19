@@ -70,6 +70,7 @@ async function touchConversation(sessionId: string | null | undefined) {
 }
 
 export async function queueTextMessage(options: {
+	channel?: string;
 	toJid: string;
 	body: string;
 	orderId?: string | null;
@@ -77,6 +78,7 @@ export async function queueTextMessage(options: {
 	dedupeKey?: string | null;
 }) {
 	const payload = {
+		channel: options.channel ?? 'whatsapp',
 		toJid: options.toJid,
 		body: options.body,
 		kind: 'text' as const,
@@ -97,6 +99,7 @@ export async function queueTextMessage(options: {
 }
 
 export async function queueLocationMessage(options: {
+	channel?: string;
 	toJid: string;
 	location: NormalizedLocation;
 	orderId?: string | null;
@@ -104,6 +107,7 @@ export async function queueLocationMessage(options: {
 	dedupeKey?: string | null;
 }) {
 	const query = db.insert(outboxMessages).values({
+		channel: options.channel ?? 'whatsapp',
 		toJid: options.toJid,
 		kind: 'location',
 		locationLatitude: options.location.latitude,
@@ -124,13 +128,19 @@ export async function queueLocationMessage(options: {
 	await touchConversation(options.conversationSessionId);
 }
 
-export async function loadDueOutboxMessages(limit = 20) {
+export async function loadDueOutboxMessages(options: { channel?: string; limit?: number } = {}) {
 	return db
 		.select()
 		.from(outboxMessages)
-		.where(and(eq(outboxMessages.status, 'pending'), lte(outboxMessages.availableAt, nowIso())))
+		.where(
+			and(
+				eq(outboxMessages.channel, options.channel ?? 'whatsapp'),
+				eq(outboxMessages.status, 'pending'),
+				lte(outboxMessages.availableAt, nowIso())
+			)
+		)
 		.orderBy(asc(outboxMessages.availableAt))
-		.limit(limit);
+		.limit(options.limit ?? 20);
 }
 
 export async function markOutboxProcessing(messageId: string) {

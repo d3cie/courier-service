@@ -13,6 +13,11 @@ function nowIso() {
 }
 
 export class FakeMessagingProvider extends EventEmitter {
+	constructor(private providerKey = 'fake-whatsapp') {
+		super();
+		this.connection.providerKey = providerKey;
+	}
+
 	private inboundHandler?: (message: NormalizedInboundMessage) => Promise<void>;
 	private connection: MessagingConnectionSnapshot = {
 		providerKey: 'fake-whatsapp',

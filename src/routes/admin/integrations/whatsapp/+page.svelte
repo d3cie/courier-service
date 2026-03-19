@@ -1,5 +1,30 @@
 <script lang="ts">
+	import { invalidate } from '$app/navigation';
+	import { onMount } from 'svelte';
+
 	let { data } = $props();
+
+	const refreshDependency = 'app:whatsapp-dashboard';
+	const refreshIntervalMs = 10_000;
+
+	onMount(() => {
+		const refresh = () => {
+			if (document.visibilityState !== 'visible') {
+				return;
+			}
+
+			void invalidate(refreshDependency);
+		};
+
+		const interval = window.setInterval(refresh, refreshIntervalMs);
+		const handleVisibilityChange = () => refresh();
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
+		return () => {
+			window.clearInterval(interval);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+		};
+	});
 
 	function describeStatus() {
 		const status = data.connection?.status;
@@ -28,15 +53,12 @@
 	}
 </script>
 
-<svelte:head>
-	<meta http-equiv="refresh" content="10" />
-</svelte:head>
-
 <section class="panel">
 	<p class="eyebrow">Integration</p>
 	<h1 class="hero-title">WhatsApp worker state</h1>
 	<p class="muted">
-		Run <code>pnpm worker</code> alongside the web app. This screen auto-refreshes every 10 seconds.
+		Run <code>pnpm worker</code> alongside the web app. This screen polls every 10 seconds while it is
+		open.
 	</p>
 </section>
 
@@ -135,6 +157,14 @@
 			{/each}
 		</tbody>
 	</table>
+</section>
+
+<section class="panel">
+	<p class="eyebrow">Test Webhook</p>
+	<p class="muted">
+		POST JSON to <code>/admin/integrations/whatsapp/test-webhook</code> as an authenticated admin to exercise
+		the same menu flow without a live WhatsApp connection.
+	</p>
 </section>
 
 <style>

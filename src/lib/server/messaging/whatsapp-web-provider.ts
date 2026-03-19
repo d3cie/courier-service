@@ -17,6 +17,23 @@ const whatsappRuntime = (
 	'default' in whatsappWeb ? whatsappWeb.default : whatsappWeb
 ) as typeof import('whatsapp-web.js');
 const { Client, LocalAuth, Location } = whatsappRuntime;
+const directUserJidPattern = /^[0-9]+@(?:c\.us|s\.whatsapp\.net|lid)$/;
+
+type WhatsappInboundEvent = {
+	body?: string;
+	broadcast?: boolean;
+	from?: string;
+	fromMe?: boolean;
+	isStatus?: boolean;
+	location?: {
+		latitude?: number | string;
+		longitude?: number | string;
+		name?: string;
+		address?: string;
+		url?: string;
+	} | null;
+	type?: string;
+};
 
 function nowIso() {
 	return new Date().toISOString();
@@ -46,6 +63,26 @@ function resolveHeadlessMode() {
 
 function startupTimeoutMs() {
 	return Number(process.env.WHATSAPP_STARTUP_TIMEOUT_MS ?? '60000');
+}
+
+function isDirectWhatsappUserJid(jid: string) {
+	return directUserJidPattern.test(jid);
+}
+
+function isSupportedInboundType(message: WhatsappInboundEvent) {
+	return Boolean(message.location) || message.type === 'chat';
+}
+
+export function shouldHandleWhatsappInboundMessage(message: WhatsappInboundEvent) {
+	if (message.fromMe || !message.from) {
+		return false;
+	}
+
+	if (message.isStatus || message.broadcast || !isDirectWhatsappUserJid(message.from)) {
+		return false;
+	}
+
+	return isSupportedInboundType(message);
 }
 
 export class WhatsappWebMessagingProvider extends EventEmitter {
@@ -181,7 +218,7 @@ export class WhatsappWebMessagingProvider extends EventEmitter {
 		});
 
 		this.client.on('message', async (message) => {
-			if (message.fromMe) {
+			if (!shouldHandleWhatsappInboundMessage(message)) {
 				return;
 			}
 
@@ -253,7 +290,8 @@ export class WhatsappWebMessagingProvider extends EventEmitter {
 	}
 
 	normalizeInboundMessage(message: Message): NormalizedInboundMessage {
-		const type = message.location ? 'location' : message.body ? 'text' : 'unknown';
+		const normalizedText = message.type === 'chat' ? message.body.trim() : '';
+		const type = message.location ? 'location' : normalizedText ? 'text' : 'unknown';
 
 		return {
 			providerKey: this.connection.providerKey,
@@ -261,7 +299,7 @@ export class WhatsappWebMessagingProvider extends EventEmitter {
 			fromJid: message.from,
 			fromPhone: phoneFromJid(message.from),
 			type,
-			text: message.body || undefined,
+			text: normalizedText || undefined,
 			location: message.location
 				? {
 						latitude: Number(message.location.latitude),
@@ -275,7 +313,10 @@ export class WhatsappWebMessagingProvider extends EventEmitter {
 			raw: {
 				body: message.body,
 				from: message.from,
-				location: message.location
+				isStatus: message.isStatus,
+				broadcast: message.broadcast,
+				location: message.location,
+				type: message.type
 			}
 		};
 	}
